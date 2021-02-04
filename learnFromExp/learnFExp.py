@@ -13,7 +13,7 @@ def trainOne():
 
           'compExpTar': [1], #Layer to explain - here we have only two layers in the middle, ie. use either 0 or 1
           'nSplit': 16, #depth of explanation, ie. number of features of explanation more is generally better
-          'maxRan': 1.0, #Newly added: if choose a class randomly, choose it among the fraction X of most likely classes according to the models' prediction, ie. for value 0.3 and a dataset with 100 classes, the top 30 classes are used
+          'maxRan': 0.7, #Newly added: if choose a class randomly, choose it among the fraction X of most likely classes according to the models' prediction, ie. for value 0.3 and a dataset with 100 classes, the top 30 classes are used
                          #1.0 is best for CIFAR-10, ~0.5 is better for CIFAR-100 (higher accuracy and less variance across runs); in original paper this would be 1
           #These are internal settings
           'expRed': [1, 2],  'nin': 1,   'exps': ['C', 'R', '1'],
