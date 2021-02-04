@@ -1,9 +1,8 @@
 import torchvision,torch
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset,TensorDataset
-import learnFromExp.learnCfg as learnCfg
-import numpy as np,os,sklearn #,pickle imageio,time,
-import torch.nn.functional as F
+import numpy as np,sklearn
+
 
 gds = lambda dataset,cfg: torch.utils.data.DataLoader(TensorDataset(*[torch.from_numpy(x) for x in dataset]), batch_size=cfg["batchSize"])
 
@@ -20,21 +19,17 @@ def getFullDS(cfg):
     elif dname == "Ci100":
         cdat = torchvision.datasets.CIFAR100  # transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         cfg["imCh"] = 3
-    ntrain,down=cfg["clcfg"]["ntrain"],True
-    cpa=learnCfg.datFolder+"learnExp/"
-    fname = cpa+dname+str(ntrain)+"_"+str(cfg["clcfg"]["aug"])
-    if not os.path.exists(fname+"teX") or not cfg["loadTrain"]:
-       os.makedirs(cpa,exist_ok=True)
-       def loadStore(isTrain,ndat):
-            nonlocal  cdat
-            trainset = cdat(root=learnCfg.datFolder, train=isTrain, download=down,transform=trans)
-            train_dataset = torch.utils.data.DataLoader(trainset, batch_size=ndat, num_workers=4)  # cfg["batchSize"]
-            ds = next(iter(train_dataset))
-            X, Y = ds[0].clone().numpy(), ds[1].clone().numpy()
-            ds = [X,Y]
-            #print("Data stats", cdat, X.shape, np.mean(X, axis=(0, 2, 3)), np.std(X, axis=(0, 2, 3)))
-            ds = sklearn.utils.shuffle(*ds)
-            return  ds[0].astype(np.float16), ds[1].astype(np.int16)
+    ntrain,down=cfg["ntrain"],True
+    def loadStore(isTrain,ndat):
+        nonlocal  cdat
+        trainset = cdat(root="data/", train=isTrain, download=down,transform=trans)
+        train_dataset = torch.utils.data.DataLoader(trainset, batch_size=ndat, num_workers=4)  # cfg["batchSize"]
+        ds = next(iter(train_dataset))
+        X, Y = ds[0].clone().numpy(), ds[1].clone().numpy()
+        ds = [X,Y]
+        #print("Data stats", cdat, X.shape, np.mean(X, axis=(0, 2, 3)), np.std(X, axis=(0, 2, 3)))
+        ds = sklearn.utils.shuffle(*ds)
+        return  ds[0].astype(np.float16), ds[1].astype(np.int16)
 
     trX,trY=loadStore(True,ntrain)
     teX, teY=loadStore(False, ntrain//2)
