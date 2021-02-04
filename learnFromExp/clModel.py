@@ -1,12 +1,10 @@
 import numpy as np,copy
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.cuda.amp as tca
-import learnFromExp.lutils as lutils
-import learnFromExp.learnCfg as learnCfg
-from learnFromExp.models import ExpNet
+import lutils  #import learnFromExp.lutils as lutils
+from models import ExpNet
 
 niter = 1e10
 
@@ -27,7 +25,7 @@ def expRun(dataset, getExp, nexp, exps,cfg,grad_cam,tarLays,norm,actModel,lrpMod
         alogs.append(logs)
         anlogs.append(nlogs)
         if len(oy) * data[0].shape[0] > nexp: break
-        if len(oy) % 10 == 0: print("Nex", len(oy) * data[0].shape[0], nexp)
+        if len(oy) % 40 == 0: print("Computed Explantions: ", len(oy) * data[0].shape[0])
     oy = np.concatenate(oy).astype(np.int16)
     ox = np.concatenate(ox, axis=0).astype(np.float16)
     ex = np.concatenate(expx, axis=0).astype(np.float16)
@@ -36,32 +34,36 @@ def expRun(dataset, getExp, nexp, exps,cfg,grad_cam,tarLays,norm,actModel,lrpMod
     anlogs = np.concatenate(anlogs, axis=0).astype(np.float16)
     sta = lambda i: np.concatenate([r[i] for r in rawexpx], axis=0)
     exr = [sta(i) for i in range(len(tarLays))]  #np.concatenate(rawexpx,axis=0).astype(np.float16)
+    print("Total computed Explantions: ", len(oy))
     return ox, oy, [ex] + exr,aids,alogs,anlogs
 
 
 def selectLays(ds, cfg): #Returns X,Y, Exp(SalMaps),classes,logits (if used later)
-    tl = np.array(cfg['usedExpTar']) - 1-cfg["compExpOff"]
+    tl = [0]#np.array(cfg['compExpTar']) #- 1-cfg["compExpOff"]
+    ds=list(ds[:2])+ds[2]+list(ds[3:])
     return ds[:2] + [ds[3 + t] for t in tl] + [ds[-3]]
 
-def getExps(loaded,cfg,train_dataset,val_dataset,norm):
+def getExps(model,cfg,train_dataset,val_dataset,norm):
     #Data consists of: X,y,all exps, estimated y of exps, logit y, normed logits
     #All Exps: List of Input Ex, Mid Ex (where Input Ex is always one entry, and Mid Ex has one list entry per layer)
     # Mid Ex for one layer: batchSize,ClassForWhichExp,splits,h,w
     # Input Ex: batchSize,ClassForWhichExp,layers,h,w
     #Exp have shape Upsampled: batchSize,#targetlays,#targetclasses,#features/splits,imgheight,imgwid
     ### Exp have shape for nonexp: batchSize,#targetclasses,#targetlays,#splits,imgheight,imgwid
-    modcfg=copy.deepcopy(cfg)    #ecfg = modcfg["clcfgForExp"]  modcfg["clcfg"]=ecfg
-    model, lcfg, loadedExp = getclassifier(modcfg,  train_dataset, val_dataset, learnCfg.resFolder,forceLoad=True)  # if "trainCl" in cfg: return
+    #modcfg=copy.deepcopy(cfg)    #ecfg = modcfg["clcfgForExp"]  modcfg["clcfg"]=ecfg
+    #model, lcfg, loadedExp = getclassifier(modcfg,  train_dataset, val_dataset, None,forceLoad=True)  # if "trainCl" in cfg: return
     grad_cam, actModel, lrpModel,netClaDec,netclact = None, None, None,None,None
     grad_cam=lutils.getGradcam(cfg,model,cfg["compExpTar"])
-    d = expRun(train_dataset,True,cfg["nexp"],cfg["exps"],cfg,grad_cam,cfg["compExpTar"],norm,actModel,lrpModel,netClaDec,netclact)#"CMSTR"
-    vd = expRun(val_dataset, True, cfg["nexp"] // 2, cfg["exps"],cfg,grad_cam,cfg["compExpTar"],norm,actModel,lrpModel,netClaDec,netclact) #"CMSTRRRRRR"
+    print("Compute Explanations for training data")
+    d = expRun(train_dataset,True,cfg["ntrain"],cfg["exps"],cfg,grad_cam,cfg["compExpTar"],norm,actModel,lrpModel,netClaDec,netclact)#"CMSTR"
+    print("Compute Explanations for testing data")
+    vd = expRun(val_dataset, True, cfg["ntrain"] // 2, cfg["exps"],cfg,grad_cam,cfg["compExpTar"],norm,actModel,lrpModel,netClaDec,netclact) #"CMSTRRRRRR"
     return d,vd
 
-def decay(ccf,epoch,optimizerCl):
-    if ccf["opt"][0] == "S" and (epoch + 1) % (ccf["opt"][1] // 3+ccf["opt"][1]//10+2 ) == 0:
+def decay(opt,epoch,optimizerCl):
+    if opt[0] == "S" and (epoch + 1) % (opt[1] // 3+opt[1]//10+2 ) == 0:
         for p in optimizerCl.param_groups: p['lr'] *= 0.1
-        print("  D", np.round(optimizerCl.param_groups[0]['lr'],5))
+        #print("  D", np.round(optimizerCl.param_groups[0]['lr'],5))
 
 def getSingleAcc(net, dsx, labels, pool=None):
   with tca.autocast():
@@ -120,8 +122,8 @@ def getxdat(xdat,zeroExp,aug,cfg,ranOpt):
     return [xdat[0].cuda()]+[torch.from_numpy(d).cuda() for d in ex],inds
 
 def getOut(ndgpu,netCl,cfg):
-    dropCl = np.random.random() < cfg["dropCl"]
-    dropA =  np.random.random() < cfg["dropA"]
+    dropCl = False
+    dropA =  False
     output = netCl((ndgpu[0], ndgpu[1:],dropCl,dropA))
     return output
 
@@ -130,24 +132,20 @@ def getNet(cfg,ccf,isExp):
     netCl = NETWORK(cfg, cfg["num_classes"],isExp).cuda()
     return netCl
 
-def getExpClassifier(cfg,  train_dataset, val_dataset, resFolder, trainedNetSelf=None): #Co,val_datasetMa,resFolder
-    ccf=cfg["expcfg"]
-    netCl=getNet(cfg,ccf,True)
-    #print(netCl)  #print(trainedNetSelf)
+def getExpClassifier(cfg,  train_dataset, val_dataset, resFolder, trainedNetSelf=None): #"Train Reflective Classifier"
+    netCl=getNet(cfg,None,True)
     aep,asp= list(netCl.parameters()), trainedNetSelf.parameters()
     for iep,sp in enumerate(asp):
         ep=aep[iep]
-        #print(ep.shape,sp.shape,"sha", len(aep), len(list(trainedNetSelf.parameters())))
         if sum(list(sp.data.shape))!=sum(list(ep.data.shape)):
             if len(sp.shape)>1: ep.data[:sp.data.shape[0],:sp.data.shape[1]]=sp.data.clone()
             else: ep.data[:sp.data.shape[0]]=sp.data.clone()
         else: ep.data.copy_(sp.data)
-    if ccf["opt"][0] == "S": optimizerCl = optim.SGD(netCl.parameters(), lr=ccf["opt"][2], momentum=0.9, weight_decay=ccf["opt"][3]) #elif ccf["opt"][0] == "A": optimizerCl = optim.Adam(netCl.parameters(), ccf["opt"][2], weight_decay=ccf["opt"][3])
-    else: "Error opt not found"
-    closs, trep, loss = 0,  ccf["opt"][1], nn.CrossEntropyLoss()
-    print("Train ExpCL")
+    optimizerCl = optim.SGD(netCl.parameters(), lr=cfg["opt"][2], momentum=0.9, weight_decay=cfg["opt"][3]) #elif ccf["opt"][0] == "A": optimizerCl = optim.Adam(netCl.parameters(), ccf["opt"][2], weight_decay=ccf["opt"][3])
+    closs, trep, loss = 0,  cfg["opt"][1], nn.CrossEntropyLoss()
+    print("Train Reflective Classifier")
     scaler = tca.GradScaler()
-    ranOpt=np.sort(np.array(cfg["netExp"])) #sorting is very important
+    ranOpt=np.sort(np.array([0,1])) #sorting is very important
     emateAccs,etrAccs=[],[]
     iexp = list(np.arange(len(cfg["exps"])))
     icorr=iexp[:1]+iexp[2:]
@@ -158,28 +156,28 @@ def getExpClassifier(cfg,  train_dataset, val_dataset, resFolder, trainedNetSelf
             with tca.autocast():
                 optimizerCl.zero_grad()
                 dsy = data[1].cuda()
-                ndgpu,inds = getxdat([data[0]] + list(data[2:]),cfg["expB"],ccf["aug"],cfg,ranOpt)
+                ndgpu,inds = getxdat([data[0]] + list(data[2:]),False,False,cfg,ranOpt)
                 output=getOut(ndgpu,netCl,cfg)
                 errD_real = loss(output, dsy.long())
                 scaler.scale(errD_real).backward()
                 scaler.step(optimizerCl)
                 scaler.update()
-                closs = 0.97 * closs + 0.03 * errD_real.item() if i > 20 else 0.8 * closs + 0.2 * errD_real.item()
-        decay(ccf,epoch,optimizerCl)
+                closs = 0.97 * closs + 0.03 * errD_real.item() if epoch > 20 else 0.8 * closs + 0.2 * errD_real.item()
+        decay(cfg["opt"],epoch,optimizerCl)
         netCl.eval()
         emateAccs.append(getEAcc(netCl, val_dataset, imax,  niter=niter, cfg=cfg) if len(imax) else -1)
-        if cfg['getTrAcc']: etrAccs.append(getEAcc(netCl, train_dataset, imax,  niter=niter, cfg=cfg) if len(imax) else -1)
-        if (epoch % 2 == 0 and epoch<=10) or (epoch % 10==0 and epoch>10) :
+        #etrAccs.append(getEAcc(netCl, train_dataset, imax,  niter=niter, cfg=cfg) if len(imax) else -1)
+        if (epoch % 4 == 0 and epoch<=13) or (epoch % 20==0 and epoch>13) :
             cacc=getEAcc(netCl, val_dataset, iexp[1:],  niter=niter, cfg=cfg)
-            print(epoch, np.round(np.array([closs, cacc, getEAcc(netCl, train_dataset, icorr,  niter=niter, cfg=cfg)]), 5), cfg["pr"])
+            print(epoch, np.round(np.array([closs, cacc, getEAcc(netCl, train_dataset, icorr,  niter=niter, cfg=cfg)]), 5))
             if np.isnan(closs):
                 print("Failed!!!")
                 return None,None
     netCl.eval()
-    lcfg = {"teAccECo": getEAcc(netCl, val_dataset, [0],  niter=niter, cfg=cfg),
-                "teAccEMa": getEAcc(netCl, val_dataset, [2] ,  niter=niter, cfg=cfg) if len(iexp)>2 else -1,
-                "teAccER": getEAcc(netCl, val_dataset, [1],  niter=niter, cfg=cfg),
-                "teAccsEMa": emateAccs,"trAccsEMa": etrAccs}
+    lcfg = {"testAccCorr": getEAcc(netCl, val_dataset, [0],  niter=niter, cfg=cfg),
+                "testAccPred": getEAcc(netCl, val_dataset, [2] ,  niter=niter, cfg=cfg) if len(iexp)>2 else -1,
+                "testAccRan": getEAcc(netCl, val_dataset, [1],  niter=niter, cfg=cfg)}
+                #"teAccsEMa": emateAccs,"trAccsEMa": etrAccs}
     setEval(netCl)
     return netCl, lcfg
 
@@ -200,11 +198,10 @@ def getLo(model):
 
 
 def getclassifier(cfg,train_dataset,val_dataset,resFolder,forceLoad=False,norm=None):
-    ccf=cfg["clcfg"]
-    netCl=getNet(cfg,ccf,False)
-    optimizerCl = optim.SGD(netCl.parameters(), lr=ccf["opt"][2], momentum=0.9, weight_decay=ccf["opt"][3])
-    closs,teaccs,trep,loss,clr = 0,[],ccf["opt"][1],nn.CrossEntropyLoss(), ccf["opt"][2]
-    print("Train CL",ccf)
+    netCl=getNet(cfg,None,False)
+    optimizerCl = optim.SGD(netCl.parameters(), lr=cfg["opt"][2], momentum=0.9, weight_decay=cfg["opt"][3])
+    closs,teaccs,trep,loss,clr = 0,[],cfg["opt"][1],nn.CrossEntropyLoss(), cfg["opt"][2]
+    print("Train non-reflective classifier")
     scaler = tca.GradScaler()
     teAccs,trAccs=[],[]
     clAcc = lambda dataset: getAcc(netCl, dataset,  niter=niter,norm=norm)
@@ -222,16 +219,15 @@ def getclassifier(cfg,train_dataset,val_dataset,resFolder,forceLoad=False,norm=N
             scaler.step(optimizerCl)
             scaler.update()
             closs = 0.97 * closs + 0.03 * errD_real.item() if i > 20 else 0.8 * closs + 0.2 * errD_real.item()
-        decay(ccf,epoch,optimizerCl)
+        decay(cfg["opt"],epoch,optimizerCl)
         netCl.eval()
         teAccs.append(clAcc(val_dataset))
-        if cfg['getTrAcc']: trAccs.append(clAcc(train_dataset))
-        if (epoch % 2 == 0 and epoch<=10) or (epoch % 10==0 and epoch>10):
-            print(epoch, np.round(np.array([closs, teAccs[-1], clAcc(train_dataset),max(teAccs)]), 5), cfg["pr"])
+        #trAccs.append(clAcc(train_dataset))
+        if (epoch % 4 == 0 and epoch<=13) or (epoch % 20==0 and epoch>13):
+            print(epoch, np.round(np.array([closs, teAccs[-1], clAcc(train_dataset),max(teAccs)]), 5))
             if np.isnan(closs):
                 print("Failed!!!")
                 return None,None
-
-    lcfg = {"ClteAcc": clAcc(val_dataset), "CltrAcc": clAcc(train_dataset),"ClteAccs":teAccs,"CltrAccs":trAccs,"mClteAcc":max(teAccs)}
+    lcfg = {"testAcc": clAcc(val_dataset), "trainAcc": clAcc(train_dataset)}
     setEval(netCl)
     return netCl, lcfg,False

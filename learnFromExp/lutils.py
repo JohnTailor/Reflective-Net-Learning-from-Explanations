@@ -1,7 +1,6 @@
-import imageio,time,numpy as np
-import torch.nn.functional as F
+import numpy as np
 import torch
-import learnFromExp.gradcam2 as grad
+import gradcam2 as grad
 import torch.cuda.amp as tca
 
 def getPred(model, rawx,device):
@@ -13,19 +12,24 @@ def getPred(model, rawx,device):
 def getGradcam(cfg,model,tarLays):
     taLays=[]
     for l in tarLays:
-        if l==4: taLay = model.conv4.bA
-        elif l == 3: taLay =model.conv3.bA
-        elif l == 2: taLay = model.conv2.bA
-        elif l == 1: taLay = model.conv1.bA
+        #if l==4: taLay = model.conv4
+        if l == 1: taLay =model.conv3a
+        elif l == 0: taLay = model.conv2a
+        #elif l == 1: taLay = model.conv1
         taLays.append(taLay)
-        grad_cam = grad.GradCAM(model=model, target_layers=taLays, nsplit=cfg["nSplit"], relu=cfg["relu"])
+        grad_cam = grad.GradCAM(model=model, target_layers=taLays, nsplit=cfg["nSplit"])
         return grad_cam
 
 def getTargetIndex(taInd,correctCl,cfg,oldTar):
     if taInd[0] == "C": target_index = correctCl#.cpu().numpy()
     elif taInd[0] == "R":
-        target_index = np.random.choice(np.arange(cfg["num_classes"]))
-        while target_index in oldTar: target_index = np.random.choice(np.arange(cfg["num_classes"]))
+        if cfg['maxRan']==1:
+            target_index = np.random.choice(np.arange(cfg["num_classes"]))
+            while target_index in oldTar: target_index = np.random.choice(np.arange(cfg["num_classes"]))
+        else:
+            target_index = -np.random.choice(np.arange(int(cfg["num_classes"]*cfg['maxRan']-1)))-1
+
+
     elif int(taInd[0]) > 0: target_index = -int(taInd[0])  # + (-1 if correctCl == cmax else 0)
     return target_index
 

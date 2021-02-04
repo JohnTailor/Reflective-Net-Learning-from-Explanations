@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import numpy as np
 
 class GradCAM(object):
-    def __init__(self, model,target_layers,gonly,nsplit=1,salnorm=True,relu=True ):
+    def __init__(self, model,target_layers,gonly=0,nsplit=1,salnorm=True,relu=True ):
         self.model_arch = model
         self.gradients,self.activations = [None for _ in range(len(target_layers))],[None for _ in range(len(target_layers))]
         self.gonly, self.nsplit, self.salnorm, self.relu= gonly, nsplit, salnorm, relu
