@@ -1,5 +1,5 @@
 # Reflective-Net-Learning-from-Explanations
-# Code for Paper: Reflective-Net: Learning from Explanations
+Code for Paper: Reflective-Net: Learning from Explanations
 https://arxiv.org/abs/2011.13986
 
 
