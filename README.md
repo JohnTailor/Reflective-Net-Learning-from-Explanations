@@ -1,6 +1,5 @@
 # Reflective-Net-Learning-from-Explanations
-Code for Paper: Reflective-Net: Learning from Explanations
-https://arxiv.org/abs/2011.13986
+Code for Paper: Reflective-Net: Learning from Explanations 
 
 
 The code shows significant gains for reflective-net. It uses Python and Pytorch.
