@@ -1,8 +1,8 @@
 # Reflective-Net-Learning-from-Explanations
-Code for Paper: Reflective-Net: Learning from Explanations 
+Refactored, simplified Code for Paper: Reflective-Net: Learning from Explanations 
 
 
-The code shows significant gains for reflective-net. It uses Python and Pytorch.
+The code shows significant gains for Reflective-net. It uses Python and Pytorch. 
 
 Run learnFExp.py and wait until a few runs are performed.
 
@@ -11,7 +11,8 @@ Other layers might be used for explanation that further improve performance.
 Also the parameter 'maxRan' is introduced. However, improvements are significant with/without using it (ie. also for maxRan==1)" )
 
 
-For maxRun==1.0 (as in original paper): 12 runs yielded a gain due to reflective nets of about 0.63 +/- 0.35 for CIFAR-10 and 0.9 +/- 0.8 for CIFAR-100"
+For maxRun==1.0: 12 runs yielded a gain due to reflective nets of about 0.63 +/- 0.35 for CIFAR-10 and 0.9 +/- 0.8 for CIFAR-100"
+
 For maxRun==0.5: 12 runs yielded a gain due to reflective nets of about 0.3 +/- 0.2 for CIFAR-10 and 1.7 +/- 0.4 for CIFAR-100"
 
 
