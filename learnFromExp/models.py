@@ -59,7 +59,7 @@ def addInit(cfg,sCl,isExp,classes,inoffs):
         sCl.tar = tarLays + [9999]  # sentinel
 
 def getCB( inch,outch, ks=1):
-    redconv = nn.Conv2d(inch, outch, kernel_size=ks, stride=1, padding=ks > 1)  # THESE MUST BE FIRST
+    redconv = nn.Conv2d(inch, outch, kernel_size=ks, stride=1, padding=int(ks > 1))  # THESE MUST BE FIRST
     redbn = nn.BatchNorm2d(outch)
     return redconv, redbn
 
