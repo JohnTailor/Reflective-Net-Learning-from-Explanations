@@ -14,7 +14,7 @@ class Flatten(torch.nn.Module):
 class B2lock2(nn.Module):
     def __init__(self, in_planes, planes,ker=3,stride=1,down=True):
         super(B2lock2, self).__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=ker, stride=stride, padding=ker>1, bias=False)
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=ker, stride=stride, padding=int(ker>1), bias=False)
         self.bnF = nn.BatchNorm2d(planes)
         self.relu = nn.ReLU()
         self.mp = nn.MaxPool2d((2, 2), stride=2) if down else None
